@@ -1,0 +1,18 @@
+Session data: From 2025-12-28, 15:36:04 to 2025-12-28, 16:38:31
+Session: 01:02h
+Raw XP Gain: 4,342,706
+XP Gain: 13,028,118
+Raw XP/h: 2,727,669
+XP/h: 8,183,009
+Loot: 1,141,624
+Supplies: 391,744
+Balance: 749,880
+Damage: 3,971,148
+Damage/h: 3,802,734
+Healing: 1,152,633
+Healing/h: 1,107,200
+Killed Monsters:
+  462x dawnfire asura
+  136x frost flower asura
+  110x hellspawn
+  491x midnight asura

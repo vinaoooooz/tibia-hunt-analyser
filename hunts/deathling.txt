@@ -1,0 +1,17 @@
+Session data: From 2026-02-23, 15:52:38 to 2026-02-23, 16:51:53
+Session: 00:59h
+Raw XP Gain: 4,029,714
+XP Gain: 9,066,863
+Raw XP/h: 4,317,886
+XP/h: 9,715,253
+Loot: 939,524
+Supplies: 402,704
+Balance: 536,820
+Damage: 4,926,571
+Damage/h: 4,926,571
+Healing: 1,358,990
+Healing/h: 1,358,990
+Killed Monsters:
+  407x deathling scout
+  227x deathling spellsinger
+  27x deepling warrior

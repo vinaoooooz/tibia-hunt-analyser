@@ -1,0 +1,38 @@
+Session data: From 2026-06-20, 13:38:44 to 2026-06-20, 14:15:02
+Session: 00:36h
+Raw XP Gain: 3,420,264
+XP Gain: 5,130,396
+Raw XP/h: 5,654,079
+XP/h: 8,481,118
+Loot: 847,101
+Supplies: 173,065
+Balance: 674,036
+Damage: 3,862,692
+Damage/h: 6,388,234
+Healing: 797,038
+Healing/h: 1,318,165
+Killed Monsters:
+  263x arachnophobica
+  268x burster spectre
+  118x gazer spectre
+  21x ripper spectre
+
+
+Session data: From 2026-06-20, 13:38:44 to 2026-06-20, 13:54:15
+Session: 00:15h
+Raw XP Gain: 1,500,984
+XP Gain: 2,251,476
+Raw XP/h: 5,803,751
+XP/h: 8,705,627
+Loot: 343,012
+Supplies: 70,959
+Balance: 272,053
+Damage: 1,700,363
+Damage/h: 6,577,693
+Healing: 340,191
+Healing/h: 1,315,996
+Killed Monsters:
+  111x arachnophobica
+  119x burster spectre
+  53x gazer spectre
+  11x ripper spectre

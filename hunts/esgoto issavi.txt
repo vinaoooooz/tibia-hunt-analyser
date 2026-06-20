@@ -1,0 +1,17 @@
+Session data: From 2026-05-07, 18:43:58 to 2026-05-07, 19:04:14
+Session: 00:20h
+Raw XP Gain: 1,457,331
+XP Gain: 1,457,331
+Raw XP/h: 4,477,487
+XP/h: 4,477,487
+Loot: 254,540
+Supplies: 140,286
+Balance: 114,254
+Damage: 1,951,259
+Damage/h: 1,951,259
+Healing: 566,138
+Healing/h: 566,138
+Killed Monsters:
+  32x black sphinx acolyte
+  104x burning gladiator
+  74x priestess of the wild sun

@@ -1,0 +1,16 @@
+Session data: From 2026-04-26, 20:02:06 to 2026-04-26, 21:02:52
+Session: 01:00h
+Raw XP Gain: 4,683,994
+XP Gain: 6,942,821
+Raw XP/h: 4,922,231
+XP/h: 6,753,227
+Loot: 846,240
+Supplies: 303,717
+Balance: 542,523
+Damage: 5,186,695
+Damage/h: 3,399,750
+Healing: 1,353,223
+Healing/h: 889,743
+Killed Monsters:
+  279x crypt warden
+  335x sphinx

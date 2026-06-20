@@ -1,0 +1,17 @@
+Session data: From 2025-08-31, 18:42:47 to 2025-08-31, 19:43:37
+Session: 01:00h
+Raw XP Gain: 3,762,403
+XP Gain: 5,643,603
+Raw XP/h: 3,601,962
+XP/h: 5,402,943
+Loot: 1,241,345
+Supplies: 330,054
+Balance: 911,291
+Damage: 4,124,919
+Damage/h: 4,051,549
+Healing: 964,930
+Healing/h: 945,546
+Killed Monsters:
+  569x fury
+  394x nightmare
+  371x spectre

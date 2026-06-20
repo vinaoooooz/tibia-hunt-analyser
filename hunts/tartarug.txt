@@ -1,0 +1,17 @@
+Session data: From 2026-06-19, 15:25:47 to 2026-06-19, 16:26:04
+Session: 01:00h
+Raw XP Gain: 2,769,864
+XP Gain: 4,154,655
+Raw XP/h: 2,756,244
+XP/h: 4,134,226
+Loot: 1,643,704
+Supplies: 75,360
+Balance: 1,568,344
+Damage: 3,975,503
+Damage/h: 3,956,480
+Healing: 357,737
+Healing/h: 356,025
+Killed Monsters:
+  279x foam stalker
+  516x two-headed turtle
+  16x venerable foam stalker
