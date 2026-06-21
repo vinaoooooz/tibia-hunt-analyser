@@ -15,3 +15,23 @@ Killed Monsters:
   32x black sphinx acolyte
   104x burning gladiator
   74x priestess of the wild sun
+Looted Items:
+  4x a lightning pendant
+  3x a magma amulet
+  4x magma boots
+  1x lightning boots
+  1x lightning legs
+  3x a lightning headband
+  541x a platinum coin
+  2x a wand of decay
+  2x a golden sickle
+  3x a war axe
+  1x a relic sword
+  2x an underworld rod
+  1x a spellweaver's robe
+  2x a wand of everblazing
+  2x a blue crystal shard
+  1x a sea horse figurine
+  7x an empty honey glass
+  1x a secret instruction
+  15x a Fafnar symbol

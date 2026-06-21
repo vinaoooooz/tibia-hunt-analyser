@@ -15,3 +15,37 @@ Killed Monsters:
   279x foam stalker
   516x two-headed turtle
   16x venerable foam stalker
+Looted Items:
+  88x a strong mana potion
+  25x a giant shimmering pearl
+  9x terra boots
+  5x a terra amulet
+  49x glacier shoes
+  9x a lightning headband
+  7x an emerald bangle
+  14x a silver brooch
+  23x a white pearl
+  18x a black pearl
+  18x a small diamond
+  28x a small emerald
+  10144x a platinum coin
+  1x a violet gem
+  7x a gold nugget
+  1x a might ring
+  30x a spike sword
+  20x knight legs
+  24x an orichalcum pearl
+  1x a turtle shell
+  14x a soul orb
+  5x a mercenary sword
+  2x a spellbook of enlightenment
+  9x a coral brooch
+  4x a gemmed figurine
+  2x a white gem
+  5x foam stalker spume
+  18x a coral branch
+  19x flotsam
+  18x a small tropical fish
+  42x two-headed turtle heads
+  54x hydrophytes
+  2x a collar of orange plasma

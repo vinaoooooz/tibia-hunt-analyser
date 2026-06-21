@@ -14,3 +14,24 @@ Healing/h: 889,743
 Killed Monsters:
   279x crypt warden
   335x sphinx
+Looted Items:
+  10x a lightning pendant
+  22x a magma amulet
+  18x magma boots
+  2x magma legs
+  8x a magma monocle
+  13x a lightning headband
+  10x a white pearl
+  24x a small amethyst
+  1563x a platinum coin
+  28x a green gem
+  18x a blue gem
+  11x a wand of starstorm
+  24x a gold ingot
+  5x a wand of defiance
+  59x a cyan crystal fragment
+  6x a green crystal fragment
+  33x a sphinx feather
+  14x a sphinx tiara
+  31x a lamassu hoof
+  49x a lamassu horn

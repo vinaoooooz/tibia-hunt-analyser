@@ -16,6 +16,51 @@ Killed Monsters:
   268x burster spectre
   118x gazer spectre
   21x ripper spectre
+Looted Items:
+  8x a small enchanted ruby
+  3x a glacier amulet
+  2x a magma amulet
+  2x a magma coat
+  2x an emerald bangle
+  14x a small diamond
+  7x a small sapphire
+  2465x a platinum coin
+  9x a yellow gem
+  15x a red gem
+  5x a power ring
+  5x a life ring
+  8x a platinum amulet
+  1x a strange symbol
+  13x an orb
+  21x a life crystal
+  16x a mind stone
+  2x a terra rod
+  1x a hailstorm rod
+  6x a wand of inferno
+  21x a wand of cosmic energy
+  1x a stone skin amulet
+  4x a ring of healing
+  3x spider silk
+  3x a death ring
+  276x a great spirit potion
+  27x spider fangs
+  4x an underworld rod
+  1x a springsprout rod
+  6x a wand of draconia
+  8x a wand of voodoo
+  1x a sacred tree amulet
+  19x an essence of a bad dream
+  1x a necklace of the deep
+  1x a glacial rod
+  12x a brown crystal splinter
+  6x a red crystal fragment
+  3x an onyx chip
+  4x a ring of blue plasma
+  1x a collar of green plasma
+  7x a collar of red plasma
+  1x a coral brooch
+  1x a prismatic quartz
+  2x a hexagonal ruby
 
 
 Session data: From 2026-06-20, 13:38:44 to 2026-06-20, 13:54:15
@@ -36,3 +81,40 @@ Killed Monsters:
   119x burster spectre
   53x gazer spectre
   11x ripper spectre
+Looted Items:
+  1x a small enchanted ruby
+  1x a magma amulet
+  1x a magma coat
+  2x an emerald bangle
+  4x a small diamond
+  4x a small sapphire
+  861x a platinum coin
+  3x a yellow gem
+  6x a red gem
+  3x a power ring
+  1x a life ring
+  1x a platinum amulet
+  1x a strange symbol
+  6x an orb
+  8x a life crystal
+  8x a mind stone
+  1x a hailstorm rod
+  1x a wand of inferno
+  8x a wand of cosmic energy
+  3x a ring of healing
+  1x a death ring
+  77x a great spirit potion
+  9x spider fangs
+  2x an underworld rod
+  1x a springsprout rod
+  2x a wand of draconia
+  4x a wand of voodoo
+  8x an essence of a bad dream
+  1x a necklace of the deep
+  4x a brown crystal splinter
+  1x a red crystal fragment
+  2x an onyx chip
+  1x a collar of green plasma
+  3x a collar of red plasma
+  1x a prismatic quartz
+  2x a hexagonal ruby

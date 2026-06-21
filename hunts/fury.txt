@@ -15,3 +15,29 @@ Killed Monsters:
   569x fury
   394x nightmare
   371x spectre
+Looted Items:
+  2x a crystal ring
+  3x a silver brooch
+  110x a small amethyst
+  118x a platinum coin
+  110x a terra rod
+  31x a wand of cosmic energy
+  1x boots of haste
+  1x golden legs
+  5x knight legs
+  4x an ancient shield
+  5x steel boots
+  14x an orichalcum pearl
+  1x a mysterious voodoo skull
+  9x a white piece of cloth
+  35x a red piece of cloth
+  215x a soul orb
+  10x a death ring
+  183x demonic essence
+  2x a skeleton decoration
+  6x a relic sword
+  7x an assassin dagger
+  13x a noble axe
+  66x an essence of a bad dream
+  6x a shiny stone
+  42x a scythe leg

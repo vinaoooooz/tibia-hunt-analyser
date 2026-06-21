@@ -15,3 +15,19 @@ Killed Monsters:
   407x deathling scout
   227x deathling spellsinger
   27x deepling warrior
+Looted Items:
+  60x a great mana potion
+  212x a small enchanted sapphire
+  5842x a gold coin
+  685x a small emerald
+  1376x a platinum coin
+  22x a life ring
+  11x a fish fin
+  1x a flask of rust remover
+  25x an eye of a deepling
+  2x a necklace of the deep
+  291x deepling warts
+  109x deeptags
+  23x a warrior's axe
+  67x a deepling ridge
+  21x a warrior's shield

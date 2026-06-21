@@ -16,3 +16,48 @@ Killed Monsters:
   136x frost flower asura
   110x hellspawn
   491x midnight asura
+  1x snake
+Looted Items:
+  57x a great mana potion
+  4x a magma coat
+  3x a ruby necklace
+  25x a silver brooch
+  64x a white pearl
+  30x a black pearl
+  92x a small diamond
+  66x a small sapphire
+  96x a small ruby
+  51057x a gold coin
+  52x a small emerald
+  21x a small amethyst
+  2670x a platinum coin
+  4x a yellow gem
+  4x a red gem
+  3x a blue gem
+  4x a hailstorm rod
+  12x a necrotic rod
+  4x a wand of inferno
+  6x a mysterious fetish
+  6x a warrior helmet
+  1x knight legs
+  15x a tribal mask
+  4x a blue robe
+  8x a mystic turban
+  10x a red mushroom
+  9x a red piece of cloth
+  169x a soul orb
+  5x a death ring
+  148x demonic essence
+  3x an assassin dagger
+  1x a berserk potion
+  10x an ultimate health potion
+  3x a focus cape
+  3x a skullcracker armor
+  2x a spellbook of mind control
+  3x an underworld rod
+  3x a northwind rod
+  68x a small topaz
+  15x a hellspawn tail
+  112x a golden lotus brooch
+  110x a peacock feather fan
+  6x oriental shoes

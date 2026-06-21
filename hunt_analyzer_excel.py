@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Tibia Hunt Analyzer Excel Generator
-Parses 2 hunt analyzer sessions, calculates metrics, generates Excel
+Parses N hunt analyzer sessions, calculates metrics, generates Excel
 with creature images from TibiaWiki.
 """
 
@@ -9,6 +9,7 @@ import re
 import os
 import io
 import argparse
+import urllib.parse
 from datetime import datetime
 from statistics import mean
 from pathlib import Path
@@ -26,6 +27,7 @@ CREATURE_IMAGES = {
     "burster spectre": "https://static.wikia.nocookie.net/tibia/images/1/1f/Burster_Spectre.gif/revision/latest?cb=20181107180045&path-prefix=en",
     "gazer spectre": "https://static.wikia.nocookie.net/tibia/images/8/82/Gazer_Spectre.gif/revision/latest?cb=20181107180045&path-prefix=en",
     "ripper spectre": "https://static.wikia.nocookie.net/tibia/images/6/6c/Ripper_Spectre.gif/revision/latest?cb=20181107175612&path-prefix=en",
+    "priestess of the wild sun": "https://static.wikia.nocookie.net/tibia/images/b/b5/Priestess_of_the_Wild_Sun.gif/revision/latest?cb=20190702012031&path-prefix=en",
 }
 
 HEADER_FILL = PatternFill(start_color="1F4E79", end_color="1F4E79", fill_type="solid")
@@ -69,13 +71,33 @@ def parse_hunt_session(text):
         if m:
             session[key] = int(m.group(1).replace(",", ""))
 
+    def _extract_section(after, before):
+        """Return text between 'after' marker and 'before' marker (or end)."""
+        start = text.find(after)
+        if start == -1:
+            return ""
+        start += len(after)
+        end = len(text) if before is None else text.find(before, start)
+        if end == -1:
+            end = len(text)
+        return text[start:end]
+
     monsters = {}
-    for m in re.finditer(r"(\d+)x\s+(.+)", text):
+    kills_section = _extract_section("Killed Monsters:", "\nLooted Items:")
+    for m in re.finditer(r"(\d+)x\s+(.+)", kills_section):
         count = int(m.group(1))
         name = m.group(2).strip()
         monsters[name] = count
     session["monsters"] = monsters
     session["total_kills"] = sum(monsters.values())
+
+    items = {}
+    loot_section = _extract_section("Looted Items:", None)
+    for m in re.finditer(r"(\d+)x\s+(.+)", loot_section):
+        count = int(m.group(1))
+        name = m.group(2).strip()
+        items[name] = count
+    session["items"] = items
 
     if "hours" in session and session["hours"] > 0:
         session["calc_raw_xp_h"] = round(session.get("raw_xp_gain", 0) / session["hours"])
@@ -85,35 +107,44 @@ def parse_hunt_session(text):
     return session
 
 
-def fetch_image_url_tibiawiki(name):
-    """Fetch creature image URL from TibiaWiki via MediaWiki API."""
-    import urllib.parse
-    safe_name = name.strip().title().replace(" ", "_")
-    api_url = (
-        f"https://tibia.fandom.com/api.php?"
-        f"action=query&titles=File%3A{safe_name}.gif"
-        f"&prop=imageinfo&iiprop=url&format=json"
-    )
-    try:
-        resp = requests.get(api_url, timeout=10,
-                            headers={"User-Agent": "TibiaHuntAnalyzer/1.0"})
-        if resp.status_code == 200:
-            data = resp.json()
-            pages = data.get("query", {}).get("pages", {})
-            for page_id, page in pages.items():
-                if page_id != "-1":
-                    image_info = page.get("imageinfo", [])
-                    if image_info:
-                        return image_info[0].get("url")
-    except Exception:
-        pass
-    return None
+def _tibiawiki_name_variants(name):
+    """Generate possible TibiaWiki filenames for a creature name."""
+    base = name.strip().title().replace(" ", "_")
+    yield base
+    lower_articles = re.sub(r'\b(Of|The|And|In|At|For|A|An)\b', lambda m: m.group(1).lower(), base)
+    if lower_articles != base:
+        yield lower_articles
 
 
 def download_creature_image(name):
+    """Download creature image from TibiaWiki, returns BytesIO PNG (64x64) or None."""
     url = CREATURE_IMAGES.get(name.lower())
     if not url:
-        url = fetch_image_url_tibiawiki(name)
+        for ext in (".gif", ".png", ".jpg"):
+            for variant in _tibiawiki_name_variants(name):
+                safe = variant
+                api_url = (
+                    f"https://tibia.fandom.com/api.php?"
+                    f"action=query&titles=File%3A{safe}{ext}"
+                    f"&prop=imageinfo&iiprop=url&format=json"
+                )
+                try:
+                    r = requests.get(api_url, timeout=10,
+                                     headers={"User-Agent": "TibiaHuntAnalyzer/1.0"})
+                    if r.status_code == 200:
+                        pages = r.json().get("query", {}).get("pages", {})
+                        for pid, page in pages.items():
+                            if pid != "-1":
+                                ii = page.get("imageinfo", [])
+                                if ii:
+                                    url = ii[0].get("url")
+                                    break
+                        if url:
+                            break
+                except Exception:
+                    pass
+            if url:
+                break
     if not url:
         return None
     try:
@@ -162,6 +193,10 @@ def compute_group_metrics(group):
         for name, count in s["monsters"].items():
             all_monsters[name] = all_monsters.get(name, 0) + count
     total_kills = sum(all_monsters.values())
+    all_items = {}
+    for s in group:
+        for name, count in s.get("items", {}).items():
+            all_items[name] = all_items.get(name, 0) + count
     total_hours = sum(s["hours"] for s in group)
     avg_balance = mean(s.get("balance", 0) for s in group)
     total_raw_xp = sum(s.get("raw_xp_gain", 0) for s in group)
@@ -188,6 +223,7 @@ def compute_group_metrics(group):
         "avg_balance": round(avg_balance),
         "total_raw_xp": total_raw_xp,
         "monsters": sorted(all_monsters.items(), key=lambda x: x[1], reverse=True),
+        "items": sorted(all_items.items(), key=lambda x: x[1], reverse=True),
     }
 
 
@@ -237,7 +273,8 @@ def build_summary_sheet(wb, groups):
         row = 4 + rank
         ws.cell(row=row, column=1, value=group["name"])
         ws.cell(row=row, column=2, value=group["count"])
-        ws.cell(row=row, column=3, value=group["total_hours"])
+        h = group["total_hours"]
+        ws.cell(row=row, column=3, value=f"{int(h):02d}:{round((h % 1) * 60):02d}")
         ws.cell(row=row, column=4, value=group["avg_raw_xp_h"])
         ws.cell(row=row, column=5, value=group["avg_profit_h"])
         ws.cell(row=row, column=6, value=group["total_kills"])
@@ -276,7 +313,10 @@ def build_summary_sheet(wb, groups):
         for s in group["sessions"]:
             srow += 1
             ws.cell(row=srow, column=1, value=s.get("source", group["name"]))
-            ws.cell(row=srow, column=2, value=s.get("date", ""))
+            raw_date = s.get("date", "")
+            if raw_date and len(raw_date) == 10 and raw_date[4] == "-":
+                raw_date = f"{raw_date[8:]}/{raw_date[5:7]}/{raw_date[:4]}"
+            ws.cell(row=srow, column=2, value=raw_date)
             ws.cell(row=srow, column=3, value=s.get("duration_str", ""))
             ws.cell(row=srow, column=4, value=s.get("raw_xp_gain", 0))
             ws.cell(row=srow, column=5, value=s.get("calc_raw_xp_h", 0))
@@ -310,7 +350,7 @@ def build_hunt_detail_sheet(wb, group):
 
     metrics = [
         ("Sessoes agrupadas", str(group["count"])),
-        ("Horas total", str(group["total_hours"])),
+        ("Horas total", f"{int(group['total_hours']):02d}:{round((group['total_hours'] % 1) * 60):02d}"),
         ("Media Raw XP/h", f"{group['avg_raw_xp_h']:,}"),
         ("Media Profit/h", f"{group['avg_profit_h']:,}"),
         ("Total kills", str(group["total_kills"])),
@@ -417,6 +457,35 @@ def build_hunt_detail_sheet(wb, group):
         col_letter = get_column_letter(2 + ci)
         if ws.column_dimensions[col_letter].width < 18:
             ws.column_dimensions[col_letter].width = 18
+
+    # Items looted table
+    all_icnames = [iname for iname, _ in group.get("items", [])]
+    if all_icnames:
+        istart = km_hrow + len(group["sessions"]) + 3
+        ws.merge_cells(f"A{istart}:D{istart}")
+        ws.cell(row=istart, column=1, value="Itens Looteados").font = Font(bold=True, size=12, color="1F4E79")
+
+        iheaders = ["", "Item", "Qty", "Qty/h"]
+        ihrow = istart + 1
+        for col, h in enumerate(iheaders, 1):
+            ws.cell(row=ihrow, column=col, value=h)
+        style_header_row(ws, ihrow, len(iheaders))
+
+        if ws.column_dimensions["A"].width < 6:
+            ws.column_dimensions["A"].width = 6
+        if ws.column_dimensions["B"].width < 40:
+            ws.column_dimensions["B"].width = 40
+
+        for idx, (iname, icount) in enumerate(group["items"]):
+            row = ihrow + 1 + idx
+            ws.cell(row=row, column=1, value=idx + 1)
+            ws.cell(row=row, column=2, value=iname)
+            ws.cell(row=row, column=3, value=icount)
+            ih = round(icount / group["total_hours"]) if group["total_hours"] > 0 else 0
+            ws.cell(row=row, column=4, value=ih)
+            ws.cell(row=row, column=4).number_format = '#,##0'
+            for col in range(1, len(iheaders) + 1):
+                style_data_cell(ws.cell(row=row, column=col), idx % 2 == 0)
 def split_multi_session(text, base_name):
     """Split text into multiple sessions if it contains multiple 'Session data:' markers.
     Returns list of (chunk, source_name)."""
@@ -455,7 +524,8 @@ def load_sessions(args):
                 print(f"[ERRO] Arquivo nao encontrado: {fpath}")
                 return None
             fname = Path(fpath).stem
-            entries.extend(split_multi_session(open(fpath, "r", encoding="utf-8").read(), fname))
+            with open(fpath, "r", encoding="utf-8") as fh:
+                entries.extend(split_multi_session(fh.read(), fname))
         print(f"  Carregados {len(entries)} sessao(oes) via --file")
 
     elif args.paste:
