@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """
 Tibia Hunt Analyzer Excel Generator
-Parses N hunt analyzer sessions, calculates metrics, generates Excel
+Parses N hunt analyzer sessions (TXT or JSON), calculates metrics, generates Excel
 with creature images from TibiaWiki.
 """
 
 import re
 import os
 import io
+import sys
+import json
 import argparse
 import urllib.parse
 from datetime import datetime
@@ -72,7 +74,6 @@ def parse_hunt_session(text):
             session[key] = int(m.group(1).replace(",", ""))
 
     def _extract_section(after, before):
-        """Return text between 'after' marker and 'before' marker (or end)."""
         start = text.find(after)
         if start == -1:
             return ""
@@ -107,8 +108,63 @@ def parse_hunt_session(text):
     return session
 
 
+def parse_hunt_session_json(data):
+    session = {}
+    session["date"] = data.get("Session start", "")[:10]
+    session["start_time"] = data.get("Session start", "").replace(", ", " ")
+    session["end_time"] = data.get("Session end", "").replace(", ", " ")
+
+    dur = data.get("Session length", "")
+    m = re.match(r"(\d{2}):(\d{2})", dur)
+    if m:
+        hours = int(m.group(1)) + int(m.group(2)) / 60
+        session["hours"] = hours
+        session["duration_str"] = m.group(0)
+
+    field_map = {
+        "raw_xp_gain": "Raw XP Gain",
+        "xp_gain": "XP Gain",
+        "raw_xp_h": "Raw XP/h",
+        "xp_h": "XP/h",
+        "loot": "Loot",
+        "supplies": "Supplies",
+        "balance": "Balance",
+        "damage": "Damage",
+        "damage_h": "Damage/h",
+        "healing": "Healing",
+        "healing_h": "Healing/h",
+    }
+    for key, json_key in field_map.items():
+        val = data.get(json_key)
+        if val is not None:
+            session[key] = int(str(val).replace(",", ""))
+
+    monsters = {}
+    for entry in data.get("Killed Monsters", []):
+        name = entry.get("Name", "")
+        count = int(entry.get("Count", 0))
+        if name:
+            monsters[name] = monsters.get(name, 0) + count
+    session["monsters"] = monsters
+    session["total_kills"] = sum(monsters.values())
+
+    items = {}
+    for entry in data.get("Looted Items", []):
+        name = entry.get("Name", "")
+        count = int(entry.get("Count", 0))
+        if name:
+            items[name] = items.get(name, 0) + count
+    session["items"] = items
+
+    if "hours" in session and session["hours"] > 0:
+        session["calc_raw_xp_h"] = round(session.get("raw_xp_gain", 0) / session["hours"])
+        session["calc_profit_h"] = round(session.get("balance", 0) / session["hours"])
+        session["calc_xp_h"] = round(session.get("xp_gain", 0) / session["hours"])
+
+    return session
+
+
 def _tibiawiki_name_variants(name):
-    """Generate possible TibiaWiki filenames for a creature name."""
     base = name.strip().title().replace(" ", "_")
     yield base
     lower_articles = re.sub(r'\b(Of|The|And|In|At|For|A|An)\b', lambda m: m.group(1).lower(), base)
@@ -117,7 +173,6 @@ def _tibiawiki_name_variants(name):
 
 
 def download_creature_image(name):
-    """Download creature image from TibiaWiki, returns BytesIO PNG (64x64) or None."""
     url = CREATURE_IMAGES.get(name.lower())
     if not url:
         for ext in (".gif", ".png", ".jpg"):
@@ -165,6 +220,39 @@ def download_creature_image(name):
     return None
 
 
+MINOR_THRESHOLD = 15
+
+
+def _sessions_monsters_are_compatible(m1, m2):
+    keys1 = set(m1.keys())
+    keys2 = set(m2.keys())
+    if keys1 == keys2:
+        return True
+    common = keys1 & keys2
+    if not common:
+        return False
+    diff1 = [v for k, v in m1.items() if k not in common]
+    diff2 = [v for k, v in m2.items() if k not in common]
+    all_diffs = diff1 + diff2
+    if not all_diffs:
+        return True
+    return max(all_diffs) < MINOR_THRESHOLD
+
+
+def _clean_group_monsters(group):
+    if len(group) < 2:
+        return
+    common = None
+    for s in group:
+        mset = set(s["monsters"].keys())
+        if common is None:
+            common = mset.copy()
+        else:
+            common &= mset
+    for s in group:
+        s["monsters"] = {k: v for k, v in s["monsters"].items() if k in common}
+
+
 def group_sessions(sessions):
     groups = []
     used = set()
@@ -173,15 +261,17 @@ def group_sessions(sessions):
             continue
         group = [s1]
         used.add(i)
-        s1_monsters = set(s1["monsters"].keys())
         for j, s2 in enumerate(sessions):
             if j in used:
                 continue
-            s2_monsters = set(s2["monsters"].keys())
-            if s1_monsters == s2_monsters:
+            if _sessions_monsters_are_compatible(
+                s1["monsters"], s2["monsters"]
+            ):
                 group.append(s2)
                 used.add(j)
         groups.append(group)
+    for g in groups:
+        _clean_group_monsters(g)
     return groups
 
 
@@ -203,7 +293,6 @@ def compute_group_metrics(group):
     sorted_creatures = sorted(all_monsters.items(), key=lambda x: x[1], reverse=True)
     top_names = [c[0] for c in sorted_creatures[:3]]
     creature_name = ", ".join(top_names)
-    # Use source filenames for group name (unique, ordered)
     seen = set()
     sources = []
     for s in group:
@@ -330,7 +419,6 @@ def build_summary_sheet(wb, groups):
 
 
 def build_hunt_detail_sheet(wb, group):
-    # Generate sheet name from source(s)
     seen = set()
     src_parts = []
     for s in group["sessions"]:
@@ -427,7 +515,6 @@ def build_hunt_detail_sheet(wb, group):
             if col >= 3:
                 cell.number_format = '#,##0'
 
-    # Kills matrix: per-session per-creature breakdown
     all_cnames = [cname for cname, _ in group["monsters"]]
     km_start = shrow + len(group["sessions"]) + 3
     ws.merge_cells(f"A{km_start}:{get_column_letter(4 + len(all_cnames))}{km_start}")
@@ -452,13 +539,11 @@ def build_hunt_detail_sheet(wb, group):
             cell = ws.cell(row=row, column=col)
             style_data_cell(cell, idx % 2 == 0)
 
-    # Adjust column widths for creature columns
     for ci in range(len(all_cnames)):
         col_letter = get_column_letter(2 + ci)
         if ws.column_dimensions[col_letter].width < 18:
             ws.column_dimensions[col_letter].width = 18
 
-    # Items looted table
     all_icnames = [iname for iname, _ in group.get("items", [])]
     if all_icnames:
         istart = km_hrow + len(group["sessions"]) + 3
@@ -486,9 +571,9 @@ def build_hunt_detail_sheet(wb, group):
             ws.cell(row=row, column=4).number_format = '#,##0'
             for col in range(1, len(iheaders) + 1):
                 style_data_cell(ws.cell(row=row, column=col), idx % 2 == 0)
+
+
 def split_multi_session(text, base_name):
-    """Split text into multiple sessions if it contains multiple 'Session data:' markers.
-    Returns list of (chunk, source_name)."""
     count = text.count("Session data:")
     if count <= 1:
         return [(text, base_name)]
@@ -500,12 +585,54 @@ def split_multi_session(text, base_name):
     return result
 
 
+def _script_dir():
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent
+    return Path(__file__).parent
+
+
+def _tibia_log_dir():
+    local_appdata = os.environ.get("LOCALAPPDATA", "")
+    if not local_appdata:
+        return None
+    p = Path(local_appdata) / "Tibia" / "packages" / "Tibia" / "log"
+    return p if p.is_dir() else None
+
+
+def load_json_sessions(tibia_dir):
+    entries = []
+    files = sorted(tibia_dir.glob("Hunting_Session_*.json"))
+    if not files:
+        files = sorted(tibia_dir.glob("*.json"))
+    if not files:
+        print(f"[ERRO] Nenhum arquivo .json encontrado em: {tibia_dir}")
+        return None
+    for f in files:
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+            s = parse_hunt_session_json(data)
+            if not s or "hours" not in s:
+                print(f"[AVISO] '{f.stem}': dados de sessao invalidos no JSON")
+                continue
+            s["source"] = f.stem
+            entries.append(s)
+        except (json.JSONDecodeError, KeyError, ValueError) as e:
+            print(f"[AVISO] '{f.name}': erro ao ler JSON ({e})")
+            continue
+    return entries
+
+
 def load_sessions(args):
-    """Load session texts from files, stdin, or use defaults.
-    Returns list of (text, source_name) tuples."""
     entries = []
 
-    if args.dir:
+    if args.tibia:
+        tibia_dir = _tibia_log_dir()
+        if tibia_dir is None:
+            print("[ERRO] Pasta de log do Tibia nao encontrada.")
+            return None
+        return load_json_sessions(tibia_dir)
+
+    elif args.dir:
         p = Path(args.dir)
         if not p.is_dir():
             print(f"[ERRO] Diretorio nao encontrado: {args.dir}")
@@ -530,7 +657,6 @@ def load_sessions(args):
 
     elif args.paste:
         print("Cole todas as sessoes (separadas por linhas em branco). Pressione Ctrl+Z + Enter (Windows) ou Ctrl+D (Linux/Mac) para finalizar:")
-        import sys
         stdin_data = sys.stdin.read()
         chunks = [c.strip() for c in stdin_data.split("\n\n") if c.strip()]
         if len(chunks) < 1:
@@ -541,7 +667,7 @@ def load_sessions(args):
         print(f"  Lidas {len(entries)} sessoes do stdin")
 
     else:
-        default_dir = Path(__file__).parent / "hunts"
+        default_dir = _script_dir() / "hunts"
         if default_dir.is_dir() and list(default_dir.glob("*.txt")):
             files = sorted(default_dir.glob("*.txt"))
             for f in files:
@@ -565,20 +691,25 @@ def main():
     parser.add_argument("-o", "--output", help="Arquivo Excel de saida")
     parser.add_argument("--paste", action="store_true",
                         help="Ler sessoes do teclado (cole os dados)")
+    parser.add_argument("--tibia", action="store_true",
+                        help="Importar sessoes diretamente da pasta de log do Tibia (JSON)")
     args = parser.parse_args()
 
-    entries = load_sessions(args)
-    if entries is None:
+    raw_entries = load_sessions(args)
+    if raw_entries is None:
         return
 
-    sessions = []
-    for text, source in entries:
-        s = parse_hunt_session(text)
-        if not s or "hours" not in s:
-            print(f"[AVISO] '{source}': nao foi possivel extrair dados validos")
-            return
-        s["source"] = source
-        sessions.append(s)
+    if args.tibia:
+        sessions = raw_entries
+    else:
+        sessions = []
+        for text, source in raw_entries:
+            s = parse_hunt_session(text)
+            if not s or "hours" not in s:
+                print(f"[AVISO] '{source}': nao foi possivel extrair dados validos")
+                return
+            s["source"] = source
+            sessions.append(s)
 
     print("=" * 60)
     print(f"Tibia Hunt Analyzer - Excel Generator ({len(sessions)} sessoes)")
