@@ -53,6 +53,8 @@ def find_system_python():
 
     for name in ["python.exe", "python3.exe", "python314.exe", "python313.exe", "python312.exe"]:
         for path_dir in os.environ.get("PATH", "").split(os.pathsep):
+            if "windowsapps" in path_dir.lower():
+                continue
             candidate = os.path.join(path_dir, name)
             if os.path.isfile(candidate):
                 return candidate
