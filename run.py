@@ -165,15 +165,27 @@ def run_with_subprocess(python_exe, script_path, app_dir):
         proc.wait()
 
 
+def log(msg):
+    frozen = getattr(sys, "frozen", False)
+    prefix = "[DEBUG] " if frozen else ""
+    print(f"{prefix}{msg}", flush=True)
+
+
 def main():
     app_dir = get_app_dir()
     script_path = str(app_dir / "streamlit_app.py")
     os.chdir(str(app_dir))
 
+    log(f"app_dir={app_dir}")
+    log(f"script_path={script_path}")
+    log(f"frozen={getattr(sys, 'frozen', False)}")
+
     python_exe = find_system_python()
     if python_exe:
+        log(f"Python encontrado: {python_exe}")
         run_with_subprocess(python_exe, script_path, app_dir)
     else:
+        log("Nenhum Python encontrado, usando bootstrap.run()")
         run_with_bootstrap(script_path)
 
 
@@ -181,4 +193,7 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
+        import traceback
+        log(f"ERRO: {e}")
+        traceback.print_exc()
         show_error(f"Erro ao iniciar o aplicativo:\n\n{e}")
