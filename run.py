@@ -67,15 +67,6 @@ def find_system_python():
             if os.path.isfile(candidate):
                 return candidate
 
-    for base in [
-        os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WindowsApps"),
-        os.path.expandvars(r"%PROGRAMFILES%\WindowsApps"),
-    ]:
-        for name in ["python3.exe", "python.exe"]:
-            candidate = os.path.join(base, name)
-            if os.path.isfile(candidate):
-                return candidate
-
     return None
 
 
