@@ -109,21 +109,26 @@ def show_error(message):
 
 
 def run_with_bootstrap(script_path):
-    from streamlit.web import bootstrap
-
     HOST = "127.0.0.1"
     PORT = 8501
 
     opener = threading.Thread(
-        target=lambda: open_browser(HOST, PORT),
+        target=lambda: (
+            wait_server_ready(HOST, PORT, timeout=30) and open_browser(HOST, PORT)
+        ),
         daemon=True,
     )
     opener.start()
 
-    bootstrap.run(script_path, False, [], {
-        "browser.gatherUsageStats": False,
-        "server.headless": True,
-    })
+    sys.argv = [
+        "streamlit", "run", script_path,
+        "--server.port", str(PORT),
+        "--server.headless", "true",
+        "--browser.gatherUsageStats", "false",
+    ]
+
+    import runpy
+    runpy.run_module("streamlit", run_name="__main__", alter_sys=True)
 
 
 def run_with_subprocess(python_exe, script_path, app_dir):
