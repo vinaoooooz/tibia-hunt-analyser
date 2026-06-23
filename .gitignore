@@ -1,7 +1,6 @@
 *.xlsx
 __pycache__/
 build/
-dist/
 dist_v2/
 *.spec
 test_*.xlsx
