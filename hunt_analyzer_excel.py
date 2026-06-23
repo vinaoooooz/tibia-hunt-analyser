@@ -22,6 +22,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.drawing.image import Image as XlImage
 from openpyxl.utils import get_column_letter
+from openpyxl.chart import BarChart, Reference, LineChart
 
 
 CREATURE_IMAGES = {
@@ -39,6 +40,8 @@ THIN_BORDER = Border(
     left=Side(style="thin"), right=Side(style="thin"),
     top=Side(style="thin"), bottom=Side(style="thin"),
 )
+RED_FILL = PatternFill(start_color="FFCCCC", end_color="FFCCCC", fill_type="solid")
+GREEN_FILL = PatternFill(start_color="CCFFCC", end_color="CCFFCC", fill_type="solid")
 
 
 def parse_hunt_session(text):
@@ -57,9 +60,9 @@ def parse_hunt_session(text):
 
     fields = {
         "raw_xp_gain": r"Raw XP Gain:\s+([\d,]+)",
-        "xp_gain": r"XP Gain:\s+([\d,]+)",
+        "xp_gain": r"(?<!Raw )XP Gain:\s+([\d,]+)",
         "raw_xp_h": r"Raw XP/h:\s+([\d,]+)",
-        "xp_h": r"XP/h:\s+([\d,]+)",
+        "xp_h": r"(?<!Raw )XP/h:\s+([\d,]+)",
         "loot": r"Loot:\s+([\d,]+)",
         "supplies": r"Supplies:\s+([\d,]+)",
         "balance": r"Balance:\s+([\d,]+)",
@@ -227,6 +230,17 @@ def _sessions_monsters_are_compatible(m1, m2):
     keys1 = set(m1.keys())
     keys2 = set(m2.keys())
     if keys1 == keys2:
+        total1 = sum(m1.values())
+        total2 = sum(m2.values())
+        if total1 > 0 and total2 > 0:
+            max_delta = 0
+            for k in keys1:
+                pct1 = m1[k] / total1 * 100
+                pct2 = m2[k] / total2 * 100
+                delta = abs(pct1 - pct2)
+                if delta > max_delta:
+                    max_delta = delta
+            return max_delta < 30
         return True
     common = keys1 & keys2
     if not common:
@@ -241,6 +255,10 @@ def _sessions_monsters_are_compatible(m1, m2):
 
 def _clean_group_monsters(group):
     if len(group) < 2:
+        for s in group:
+            h = s.get("hours", 1)
+            s["monsters"] = {k: v for k, v in s["monsters"].items() if v / h >= MINOR_THRESHOLD}
+            s["total_kills"] = sum(s["monsters"].values())
         return
     common = None
     for s in group:
@@ -251,6 +269,7 @@ def _clean_group_monsters(group):
             common &= mset
     for s in group:
         s["monsters"] = {k: v for k, v in s["monsters"].items() if k in common}
+        s["total_kills"] = sum(s["monsters"].values())
 
 
 def group_sessions(sessions):
@@ -282,25 +301,19 @@ def compute_group_metrics(group):
     for s in group:
         for name, count in s["monsters"].items():
             all_monsters[name] = all_monsters.get(name, 0) + count
+    total_hours = sum(s["hours"] for s in group)
+    all_monsters = {k: v for k, v in all_monsters.items() if v / total_hours >= MINOR_THRESHOLD}
     total_kills = sum(all_monsters.values())
     all_items = {}
     for s in group:
         for name, count in s.get("items", {}).items():
             all_items[name] = all_items.get(name, 0) + count
-    total_hours = sum(s["hours"] for s in group)
     avg_balance = mean(s.get("balance", 0) for s in group)
     total_raw_xp = sum(s.get("raw_xp_gain", 0) for s in group)
     sorted_creatures = sorted(all_monsters.items(), key=lambda x: x[1], reverse=True)
-    top_names = [c[0] for c in sorted_creatures[:3]]
+    top_names = [c[0] for c in sorted_creatures[:1]]
     creature_name = ", ".join(top_names)
-    seen = set()
-    sources = []
-    for s in group:
-        src = s.get("source", "")
-        if src and src not in seen:
-            seen.add(src)
-            sources.append(src)
-    group_name = ", ".join(sources[:3]) if sources else creature_name
+    group_name = creature_name
     return {
         "name": group_name,
         "sessions": group,
@@ -332,7 +345,43 @@ def style_data_cell(cell, alt=False):
     cell.alignment = Alignment(horizontal="center", vertical="center")
 
 
-def build_summary_sheet(wb, groups):
+def compute_global_kills_h(sessions):
+    kills_per_creature = {}
+    hours_per_creature = {}
+    for s in sessions:
+        h = s.get("hours", 0)
+        for cname, ccount in s.get("monsters", {}).items():
+            kills_per_creature[cname] = kills_per_creature.get(cname, 0) + ccount
+            hours_per_creature[cname] = hours_per_creature.get(cname, 0) + h
+    if not kills_per_creature:
+        return []
+    result = []
+    for cname, ccount in kills_per_creature.items():
+        total_h = hours_per_creature.get(cname, 0)
+        kh = round(ccount / total_h) if total_h > 0 else 0
+        result.append((cname, kh))
+    result.sort(key=lambda x: x[1], reverse=True)
+    return result[:5]
+
+
+
+
+
+def apply_threshold_format(ws, group_avg, start_row, end_row, xp_col):
+    for row in range(start_row, end_row + 1):
+        cell = ws.cell(row=row, column=xp_col)
+        val = cell.value
+        if isinstance(val, (int, float)) and group_avg > 0:
+            deviation = (val - group_avg) / group_avg
+            if deviation < -0.30:
+                for col in range(1, ws.max_column + 1):
+                    ws.cell(row=row, column=col).fill = RED_FILL
+            elif deviation > 0.30:
+                for col in range(1, ws.max_column + 1):
+                    ws.cell(row=row, column=col).fill = GREEN_FILL
+
+
+def build_summary_sheet(wb, groups, top5=None, all_sessions=None):
     ws = wb.active
     ws.title = "Resumo"
 
@@ -347,6 +396,11 @@ def build_summary_sheet(wb, groups):
     c.value = f"Gerado em: {datetime.now().strftime('%d/%m/%Y %H:%M')}"
     c.font = Font(size=10, italic=True, color="666666")
     c.alignment = Alignment(horizontal="center")
+
+    ws.merge_cells("A3:G3")
+    c = ws.cell(row=3, column=1)
+    c.value = "TOP EXP"
+    c.font = Font(bold=True, size=12, color="1F4E79")
 
     headers = [
         "Hunt (Criaturas)", "Sessoes", "Horas Total", "Media Raw XP/h",
@@ -382,57 +436,135 @@ def build_summary_sheet(wb, groups):
     ws.column_dimensions["F"].width = 14
     ws.column_dimensions["G"].width = 14
 
-    detail_start = 5 + len(sorted_groups) + 2
-    ws.merge_cells(f"A{detail_start}:G{detail_start}")
-    c = ws.cell(row=detail_start, column=1)
-    c.value = "Detalhamento por Sessao"
+    chart_height = (len(sorted_groups) + 1) * 0.45
+    chart = BarChart()
+    chart.title = "XP/h por Hunt"
+    chart.style = 10
+    chart.width = 22
+    chart.height = chart_height
+    data = Reference(ws, min_col=4, min_row=4, max_row=4 + len(sorted_groups))
+    cats = Reference(ws, min_col=1, min_row=5, max_row=4 + len(sorted_groups))
+    chart.add_data(data, titles_from_data=True)
+    chart.set_categories(cats)
+    chart.x_axis.title = "Hunt"
+    chart.y_axis.title = "XP/h"
+    chart.y_axis.scaling.min = 0
+    ws.add_chart(chart, "I4")
+
+    section_row = 4 + len(sorted_groups) + 2
+
+    # --- TOP 5 Profit/h (esquerda, colunas A-E) ---
+    ws.merge_cells(f"A{section_row}:E{section_row}")
+    c = ws.cell(row=section_row, column=1)
+    c.value = "TOP 5 Profit/h"
     c.font = Font(bold=True, size=12, color="1F4E79")
 
-    detail_headers = [
-        "Sessao", "Data", "Duracao", "Raw XP Gain", "Raw XP/h (calc)",
-        "Balance", "Profit/h (calc)"
-    ]
-    hrow = detail_start + 1
-    for col, h in enumerate(detail_headers, 1):
-        ws.cell(row=hrow, column=col, value=h)
-    style_header_row(ws, hrow, len(detail_headers))
+    profit_headers = ["#", "Hunt", "Profit/h", "+/-% Media", "Imagem"]
+    phrow = section_row + 1
+    for col, h in enumerate(profit_headers, 1):
+        ws.cell(row=phrow, column=col, value=h)
+    style_header_row(ws, phrow, len(profit_headers))
 
-    srow = hrow
-    for group in sorted_groups:
-        for s in group["sessions"]:
-            srow += 1
-            ws.cell(row=srow, column=1, value=s.get("source", group["name"]))
-            raw_date = s.get("date", "")
-            if raw_date and len(raw_date) == 10 and raw_date[4] == "-":
-                raw_date = f"{raw_date[8:]}/{raw_date[5:7]}/{raw_date[:4]}"
-            ws.cell(row=srow, column=2, value=raw_date)
-            ws.cell(row=srow, column=3, value=s.get("duration_str", ""))
-            ws.cell(row=srow, column=4, value=s.get("raw_xp_gain", 0))
-            ws.cell(row=srow, column=5, value=s.get("calc_raw_xp_h", 0))
-            ws.cell(row=srow, column=6, value=s.get("balance", 0))
-            ws.cell(row=srow, column=7, value=s.get("calc_profit_h", 0))
-            for col in range(1, len(detail_headers) + 1):
-                cell = ws.cell(row=srow, column=col)
-                style_data_cell(cell, (srow - hrow) % 2 == 0)
-                if col >= 4:
-                    cell.number_format = '#,##0'
+    profit_sorted = sorted(groups, key=lambda g: g["avg_profit_h"], reverse=True)
+    avg_profit = mean(g["avg_profit_h"] for g in profit_sorted[:5]) if profit_sorted else 0
 
+    for rank, group in enumerate(profit_sorted[:5], 1):
+        row = phrow + rank
+        ws.cell(row=row, column=1, value=rank)
+        ws.cell(row=row, column=2, value=group["name"])
+        cell_p = ws.cell(row=row, column=3, value=group["avg_profit_h"])
+        cell_p.number_format = '#,##0'
+        if avg_profit > 0:
+            pct = round((group["avg_profit_h"] - avg_profit) / avg_profit * 100, 1)
+            cell_pct = ws.cell(row=row, column=4, value=f"{pct:+.1f}%")
+            if pct > 0:
+                cell_pct.font = Font(color="006100")
+            elif pct < 0:
+                cell_pct.font = Font(color="9C0006")
+        else:
+            ws.cell(row=row, column=4, value="-")
+        for col in range(1, 6):
+            style_data_cell(ws.cell(row=row, column=col), rank % 2 == 0)
+
+        top_creature = group["monsters"][0][0]
+        img_data = download_creature_image(top_creature)
+        if img_data:
+            xl_img = XlImage(img_data)
+            xl_img.width = 64
+            xl_img.height = 64
+            ws.add_image(xl_img, f"E{row}")
+            ws.row_dimensions[row].height = 70
+        else:
+            ws.cell(row=row, column=5, value="(N/D)")
+
+    # --- Preferred List (direita, colunas G-K) ---
+    if top5:
+        ws.merge_cells(f"G{section_row}:K{section_row}")
+        c = ws.cell(row=section_row, column=7)
+        c.value = "Preferred List - Top 5 Kills/h"
+        c.font = Font(bold=True, size=12, color="1F4E79")
+
+        pl_headers = ["#", "Criatura", "Kills/h", "+/-% Media", "Imagem"]
+        pl_hrow = section_row + 1
+        for col, h in enumerate(pl_headers, 1):
+            ws.cell(row=pl_hrow, column=col + 6, value=h)
+        for col in range(7, 12):
+            cell = ws.cell(row=pl_hrow, column=col)
+            cell.fill = HEADER_FILL
+            cell.font = HEADER_FONT
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            cell.border = THIN_BORDER
+
+        if ws.column_dimensions["G"].width < 6:
+            ws.column_dimensions["G"].width = 6
+        if ws.column_dimensions["H"].width < 30:
+            ws.column_dimensions["H"].width = 30
+        if ws.column_dimensions["I"].width < 14:
+            ws.column_dimensions["I"].width = 14
+        if ws.column_dimensions["J"].width < 14:
+            ws.column_dimensions["J"].width = 14
+        if ws.column_dimensions["K"].width < 14:
+            ws.column_dimensions["K"].width = 14
+
+        avg_kh = mean(item[1] for item in top5) if top5 else 0
+
+        for idx, (cname, kh) in enumerate(top5):
+            row = pl_hrow + 1 + idx
+            ws.cell(row=row, column=7, value=idx + 1)
+            ws.cell(row=row, column=8, value=cname.capitalize())
+            cell_kh = ws.cell(row=row, column=9, value=kh)
+            cell_kh.number_format = '#,##0'
+            if avg_kh > 0:
+                pct = round((kh - avg_kh) / avg_kh * 100, 1)
+                cell_pct = ws.cell(row=row, column=10, value=f"{pct:+.1f}%")
+                if pct > 0:
+                    cell_pct.font = Font(color="006100")
+                elif pct < 0:
+                    cell_pct.font = Font(color="9C0006")
+            else:
+                ws.cell(row=row, column=10, value="-")
+            for col in range(7, 12):
+                style_data_cell(ws.cell(row=row, column=col), idx % 2 == 0)
+
+            img_data = download_creature_image(cname)
+            if img_data:
+                xl_img = XlImage(img_data)
+                xl_img.width = 64
+                xl_img.height = 64
+                ws.add_image(xl_img, f"K{row}")
+                ws.row_dimensions[row].height = 70
+            else:
+                ws.cell(row=row, column=11, value="(N/D)")
 
 def build_hunt_detail_sheet(wb, group):
-    seen = set()
-    src_parts = []
-    for s in group["sessions"]:
-        src = s.get("source", "")
-        if src and src not in seen:
-            seen.add(src)
-            src_parts.append(src)
-    sheet_label = ", ".join(src_parts[:2]) if src_parts else group["name"]
-    safe_name = re.sub(r'[\\/*?:\[\] ]', '_', sheet_label)[:28]
-    ws = wb.create_sheet(title=f"{safe_name[:28]}")
+    top_creature = group["monsters"][0][0]
+    top_name = top_creature.title()
+    safe_name = re.sub(r'[\\/*?:\[\]]', '_', top_name)[:24]
+    ws = wb.create_sheet(title=safe_name)
 
     ws.merge_cells("A1:G1")
     c = ws["A1"]
-    c.value = f"Hunt: {sheet_label}"
+    c.value = f"Hunt: {top_name}"
     c.font = Font(bold=True, size=14, color="1F4E79")
     c.alignment = Alignment(horizontal="center")
 
@@ -477,7 +609,7 @@ def build_hunt_detail_sheet(wb, group):
         ws.cell(row=row, column=4).number_format = '#,##0'
         pct = round(ccount / group["total_kills"] * 100, 1) if group["total_kills"] > 0 else 0
         ws.cell(row=row, column=5, value=f"{pct}%")
-        for col in range(1, 6):
+        for col in range(1, 7):
             style_data_cell(ws.cell(row=row, column=col), idx % 2 == 0)
 
         img_data = download_creature_image(cname)
@@ -492,28 +624,119 @@ def build_hunt_detail_sheet(wb, group):
             ws.cell(row=row, column=6, value="(imagem N/D)")
 
     sstart = cstart + len(group["monsters"]) + 3
-    ws.merge_cells(f"A{sstart}:G{sstart}")
+
+    sessions_with_date = [(s.get("date", ""), s.get("calc_raw_xp_h", 0)) for s in group["sessions"] if s.get("date")]
+    sessions_with_date.sort(key=lambda x: x[0])
+
+    if len(sessions_with_date) >= 2:
+        mid = len(sessions_with_date) // 2
+        first_half = [x[1] for x in sessions_with_date[:mid]]
+        second_half = [x[1] for x in sessions_with_date[mid:]]
+        avg_first = mean(first_half) if first_half else 0
+        avg_second = mean(second_half) if second_half else 0
+
+        if avg_first > 0:
+            ratio = avg_second / avg_first
+            if ratio >= 1.05:
+                trend = "Melhorando"
+                trend_color = "006100"
+            elif ratio <= 0.95:
+                trend = "Piorando"
+                trend_color = "9C0006"
+            else:
+                trend = "Estavel"
+                trend_color = "666666"
+        else:
+            trend = "-"
+            trend_color = "666666"
+
+        ts = sstart
+        ws.merge_cells(f"A{ts}:F{ts}")
+        c = ws.cell(row=ts, column=1, value="Tendencia Historica")
+        c.font = Font(bold=True, size=12, color="1F4E79")
+
+        trend_labels = [
+            ("Tendencia", trend),
+            ("Media 1a metade", f"{avg_first:,.0f} XP/h"),
+            ("Media 2a metade", f"{avg_second:,.0f} XP/h"),
+            ("Melhor sessao", f"{max(x[1] for x in sessions_with_date):,} XP/h ({max(sessions_with_date, key=lambda x: x[1])[0]})"),
+            ("Pior sessao", f"{min(x[1] for x in sessions_with_date):,} XP/h ({min(sessions_with_date, key=lambda x: x[1])[0]})"),
+        ]
+        for i, (label, value) in enumerate(trend_labels):
+            row = ts + 1 + i
+            ws.cell(row=row, column=1, value=label).font = Font(bold=True)
+            ws.cell(row=row, column=1).border = THIN_BORDER
+            cv = ws.cell(row=row, column=2, value=value)
+            cv.border = THIN_BORDER
+            if label == "Tendencia":
+                cv.font = Font(color=trend_color, bold=True)
+
+        sstart = ts + len(trend_labels) + 2
+
+    ws.merge_cells(f"A{sstart}:I{sstart}")
     ws.cell(row=sstart, column=1, value="Detalhes das Sessoes neste Grupo").font = Font(bold=True, size=12, color="1F4E79")
 
-    sess_headers = ["Sessao", "Duracao", "Raw XP/h", "Profit/h", "Balance", "Kills"]
+    sess_headers = ["Sessao", "Duracao", "Raw XP Gain", "Raw XP/h", "Profit/h", "Balance", "Kills", "Damage", "Damage/h", "% Media"]
     shrow = sstart + 1
     for col, h in enumerate(sess_headers, 1):
         ws.cell(row=shrow, column=col, value=h)
     style_header_row(ws, shrow, len(sess_headers))
 
+    group_avg = group["avg_raw_xp_h"]
     for idx, s in enumerate(group["sessions"]):
         row = shrow + 1 + idx
         ws.cell(row=row, column=1, value=s.get("source", f"Sessao {idx+1}"))
         ws.cell(row=row, column=2, value=s.get("duration_str", ""))
-        ws.cell(row=row, column=3, value=s.get("calc_raw_xp_h", 0))
-        ws.cell(row=row, column=4, value=s.get("calc_profit_h", 0))
-        ws.cell(row=row, column=5, value=s.get("balance", 0))
-        ws.cell(row=row, column=6, value=s.get("total_kills", 0))
+        ws.cell(row=row, column=3, value=s.get("raw_xp_gain", 0))
+        ws.cell(row=row, column=4, value=s.get("calc_raw_xp_h", 0))
+        ws.cell(row=row, column=5, value=s.get("calc_profit_h", 0))
+        ws.cell(row=row, column=6, value=s.get("balance", 0))
+        ws.cell(row=row, column=7, value=s.get("total_kills", 0))
+        ws.cell(row=row, column=8, value=s.get("damage", 0))
+        dmg_h = round(s.get("damage", 0) / s.get("hours", 1)) if s.get("hours", 0) > 0 else 0
+        ws.cell(row=row, column=9, value=dmg_h)
+        session_xp = s.get("calc_raw_xp_h", 0)
+        if group_avg > 0:
+            dev = round((session_xp - group_avg) / group_avg * 100, 1)
+            ws.cell(row=row, column=10, value=f"{dev:+.1f}%")
+        else:
+            ws.cell(row=row, column=10, value="-")
         for col in range(1, len(sess_headers) + 1):
             cell = ws.cell(row=row, column=col)
             style_data_cell(cell, idx % 2 == 0)
             if col >= 3:
                 cell.number_format = '#,##0'
+
+    n_sessions = len(group["sessions"])
+    if n_sessions > 0:
+        apply_threshold_format(ws, group_avg, shrow + 1, shrow + n_sessions, 4)
+
+        label_col = 13
+        ws.cell(row=shrow, column=label_col, value="Data")
+        for idx, s in enumerate(group["sessions"]):
+            raw_date = s.get("date", "")
+            label = raw_date[-5:] if len(raw_date) >= 10 else s.get("source", f"S{idx+1}")[:10]
+            ws.cell(row=shrow + 1 + idx, column=label_col, value=label)
+        ws.column_dimensions[get_column_letter(label_col)].hidden = True
+
+        chart = LineChart()
+        chart.title = "XP/h | Profit/h | Dano/h por Sessao"
+        chart.style = 10
+        chart.width = 22
+        chart.height = 12
+        xp_data = Reference(ws, min_col=4, min_row=shrow, max_row=shrow + n_sessions)
+        profit_data = Reference(ws, min_col=5, min_row=shrow, max_row=shrow + n_sessions)
+        dmg_data = Reference(ws, min_col=9, min_row=shrow, max_row=shrow + n_sessions)
+        scats = Reference(ws, min_col=label_col, min_row=shrow + 1, max_row=shrow + n_sessions)
+        chart.add_data(xp_data, titles_from_data=True)
+        chart.add_data(profit_data, titles_from_data=True)
+        chart.add_data(dmg_data, titles_from_data=True)
+        chart.set_categories(scats)
+        chart.x_axis.title = "Sessao"
+        chart.y_axis.title = "XP/h | Profit/h | Dano/h"
+        chart.y_axis.numFmt = '#,##0'
+        chart.y_axis.scaling.min = 0
+        ws.add_chart(chart, f"K1")
 
     all_cnames = [cname for cname, _ in group["monsters"]]
     km_start = shrow + len(group["sessions"]) + 3
@@ -622,17 +845,20 @@ def load_json_sessions(tibia_dir):
     return entries
 
 
-def load_sessions(args):
-    entries = []
-
-    if args.tibia:
-        tibia_dir = _tibia_log_dir()
-        if tibia_dir is None:
-            print("[ERRO] Pasta de log do Tibia nao encontrada.")
+def _parse_txt_sessions(raw_entries):
+    sessions = []
+    for text, source in raw_entries:
+        s = parse_hunt_session(text)
+        if not s or "hours" not in s:
+            print(f"[AVISO] '{source}': nao foi possivel extrair dados validos")
             return None
-        return load_json_sessions(tibia_dir)
+        s["source"] = source
+        sessions.append(s)
+    return sessions
 
-    elif args.dir:
+
+def load_sessions(args):
+    if args.dir:
         p = Path(args.dir)
         if not p.is_dir():
             print(f"[ERRO] Diretorio nao encontrado: {args.dir}")
@@ -641,45 +867,53 @@ def load_sessions(args):
         if not files:
             print(f"[ERRO] Nenhum arquivo .txt ou .log em: {args.dir}")
             return None
+        raw = []
         for f in files:
-            entries.extend(split_multi_session(f.read_text(encoding="utf-8"), f.stem))
-        print(f"  Carregados {len(entries)} sessao(oes) de {len(files)} arquivo(s) em: {args.dir}")
+            raw.extend(split_multi_session(f.read_text(encoding="utf-8"), f.stem))
+        print(f"  Carregados {len(raw)} sessao(oes) de {len(files)} arquivo(s) em: {args.dir}")
+        return _parse_txt_sessions(raw)
 
-    elif args.file:
+    if args.file:
+        raw = []
         for fpath in args.file:
             if not os.path.exists(fpath):
                 print(f"[ERRO] Arquivo nao encontrado: {fpath}")
                 return None
             fname = Path(fpath).stem
             with open(fpath, "r", encoding="utf-8") as fh:
-                entries.extend(split_multi_session(fh.read(), fname))
-        print(f"  Carregados {len(entries)} sessao(oes) via --file")
+                raw.extend(split_multi_session(fh.read(), fname))
+        print(f"  Carregados {len(raw)} sessao(oes) via --file")
+        return _parse_txt_sessions(raw)
 
-    elif args.paste:
+    if args.paste:
         print("Cole todas as sessoes (separadas por linhas em branco). Pressione Ctrl+Z + Enter (Windows) ou Ctrl+D (Linux/Mac) para finalizar:")
         stdin_data = sys.stdin.read()
         chunks = [c.strip() for c in stdin_data.split("\n\n") if c.strip()]
         if len(chunks) < 1:
             print("[ERRO] Nenhum dado encontrado.")
             return None
-        for i, chunk in enumerate(chunks, 1):
-            entries.append((chunk, f"Sessao {i}"))
-        print(f"  Lidas {len(entries)} sessoes do stdin")
+        raw = [(chunk, f"Sessao {i}") for i, chunk in enumerate(chunks, 1)]
+        print(f"  Lidas {len(raw)} sessoes do stdin")
+        return _parse_txt_sessions(raw)
 
+    tibia_dir = _tibia_log_dir()
+    if tibia_dir is not None:
+        json_files = sorted(tibia_dir.glob("Hunting_Session_*.json"))
+        if json_files:
+            return load_json_sessions(tibia_dir)
+    hunts_dir = _script_dir() / "hunts"
+    if hunts_dir.is_dir() and list(hunts_dir.glob("*.txt")):
+        files = sorted(hunts_dir.glob("*.txt"))
+        raw = []
+        for f in files:
+            raw.extend(split_multi_session(f.read_text(encoding="utf-8"), f.stem))
+        print(f"  Carregados {len(raw)} sessao(oes) de {len(files)} arquivo(s) em: {hunts_dir}")
+        return _parse_txt_sessions(raw)
+    if tibia_dir is None:
+        print(f"[ERRO] Pasta de log do Tibia nao encontrada.")
     else:
-        default_dir = _script_dir() / "hunts"
-        if default_dir.is_dir() and list(default_dir.glob("*.txt")):
-            files = sorted(default_dir.glob("*.txt"))
-            for f in files:
-                entries.extend(split_multi_session(f.read_text(encoding="utf-8"), f.stem))
-            print(f"  Carregados {len(entries)} sessao(oes) de {len(files)} arquivo(s) em: {default_dir}")
-        else:
-            err = f"Crie a pasta '{default_dir}' e coloque os arquivos .txt das sessoes dentro dela."
-            print(f"[ERRO] {err}")
-            print(f"  Exemplo: {default_dir / 'hunt_spectres.txt'}")
-            return None
-
-    return entries
+        print(f"[ERRO] Nenhum arquivo JSON na pasta de log do Tibia nem .txt em: {hunts_dir}")
+    return None
 
 
 def main():
@@ -691,25 +925,11 @@ def main():
     parser.add_argument("-o", "--output", help="Arquivo Excel de saida")
     parser.add_argument("--paste", action="store_true",
                         help="Ler sessoes do teclado (cole os dados)")
-    parser.add_argument("--tibia", action="store_true",
-                        help="Importar sessoes diretamente da pasta de log do Tibia (JSON)")
     args = parser.parse_args()
 
-    raw_entries = load_sessions(args)
-    if raw_entries is None:
+    sessions = load_sessions(args)
+    if sessions is None:
         return
-
-    if args.tibia:
-        sessions = raw_entries
-    else:
-        sessions = []
-        for text, source in raw_entries:
-            s = parse_hunt_session(text)
-            if not s or "hours" not in s:
-                print(f"[AVISO] '{source}': nao foi possivel extrair dados validos")
-                return
-            s["source"] = source
-            sessions.append(s)
 
     print("=" * 60)
     print(f"Tibia Hunt Analyzer - Excel Generator ({len(sessions)} sessoes)")
@@ -738,15 +958,19 @@ def main():
             print(f"    {ccount}x {cname}")
 
     wb = Workbook()
-    build_summary_sheet(wb, group_metrics)
+    top5 = compute_global_kills_h(sessions)
+    build_summary_sheet(wb, group_metrics, top5, sessions)
 
-    for gm in group_metrics:
+    for gm in sorted(group_metrics, key=lambda g: g["avg_raw_xp_h"], reverse=True):
         build_hunt_detail_sheet(wb, gm)
 
     output_path = args.output or "hunt_analysis.xlsx"
     wb.save(output_path)
     print(f"\n[OK] Planilha salva: {output_path}")
     print(f"Arquivo: {Path(output_path).absolute()}")
+
+    if sys.stdout.isatty() and sys.platform == "win32":
+        input("\nPressione ENTER para sair...")
 
 
 if __name__ == "__main__":
