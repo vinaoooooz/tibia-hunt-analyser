@@ -125,6 +125,7 @@ def run_with_bootstrap(script_path):
         "--server.port", str(PORT),
         "--server.headless", "true",
         "--browser.gatherUsageStats", "false",
+        "--global.developmentMode", "false",
     ]
 
     import runpy
@@ -140,6 +141,7 @@ def run_with_subprocess(python_exe, script_path, app_dir):
         "--server.port", str(PORT),
         "--server.headless", "true",
         "--browser.gatherUsageStats", "false",
+        "--global.developmentMode", "false",
     ]
 
     creation_flags = 0
